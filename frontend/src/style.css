@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Styles ── */
+body {
+    font-family: "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+    font-family: "Space Grotesk", sans-serif;
+}
+
+/* ── Material Symbols ── */
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.filled-icon {
+    font-variation-settings: 'FILL' 1;
+}
+
+/* ── ML Yantra Theme ── */
+.ml-yantra-gradient {
+    background: linear-gradient(135deg, #ab3505 0%, #f06637 50%, #fe85ad 100%);
+}
+
+.text-gradient {
+    background: linear-gradient(135deg, #ab3505 0%, #f06637 50%, #fe85ad 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.alchemist-vessel {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(171, 53, 5, 0.05);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.alchemist-vessel:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(240, 102, 55, 0.3);
+    box-shadow: 0 20px 60px -10px rgba(171, 53, 5, 0.15);
+}
+
+.mesh-hero {
+    background-color: #faf9f6;
+    background-image:
+        radial-gradient(at 0% 0%, rgba(254, 133, 173, 0.25) 0px, transparent 50%),
+        radial-gradient(at 100% 20%, rgba(240, 102, 55, 0.2) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(171, 53, 5, 0.15) 0px, transparent 50%);
+}
+
+.grid-overlay {
+    background-image: linear-gradient(rgba(224, 191, 182, 0.1) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(224, 191, 182, 0.1) 1px, transparent 1px);
+    background-size: 60px 60px;
+}
+
+.yantra-glow {
+    filter: drop-shadow(0 0 15px rgba(240, 102, 55, 0.4));
+}
+
+/* ── Custom Scrollbar ── */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+}
+
+/* ── Transitions ── */
+html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ── Bubble Cursor Canvas ── */
+.bubble-cursor-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+}

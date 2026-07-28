@@ -1,0 +1,289 @@
+import axios from 'axios'
+import type { AxiosInstance, AxiosError } from 'axios'
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+class APIClient {
+    private client: AxiosInstance
+
+    constructor() {
+        this.client = axios.create({
+            baseURL: API_BASE_URL,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            timeout: 30000, // 30 seconds
+        })
+
+        // Response interceptor for error handling
+        this.client.interceptors.response.use(
+            (response) => response,
+            (error: AxiosError) => {
+                return Promise.reject(this.handleError(error))
+            }
+        )
+    }
+
+    private handleError(error: AxiosError): Error {
+        if (error.response) {
+            // Server responded with error status
+            const message =
+                (error.response.data as { detail?: string })?.detail ||
+                'An error occurred'
+            return new Error(message)
+        } else if (error.request) {
+            // Request made but no response
+            return new Error('No response from server. Please check your connection.')
+        } else {
+            // Something else happened
+            return new Error(error.message || 'An unknown error occurred')
+        }
+    }
+
+    // File Upload
+    async uploadFile(file: File, sessionId?: string): Promise<{
+        session_id: string
+        filename: string
+        rows: number
+        columns: number
+        column_names: string[]
+        column_types: Record<string, string>
+    }> {
+        const formData = new FormData()
+        formData.append('file', file)
+        if (sessionId) {
+            formData.append('session_id', sessionId)
+        }
+
+        const response = await this.client.post('/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        })
+        return response.data
+    }
+
+    // Get Dataset Preview
+    async getPreview(
+        sessionId: string,
+        numRows: number = 5
+    ): Promise<{
+        data: Record<string, any>[]
+        total_rows: number
+    }> {
+        const response = await this.client.get(`/preview/${sessionId}`, {
+            params: { num_rows: numRows },
+        })
+        return response.data
+    }
+
+    // Get Dataset Statistics
+    async getStatistics(sessionId: string): Promise<{
+        total_rows: number
+        total_columns: number
+        null_counts: Record<string, number>
+        duplicate_rows: number
+        column_types: Record<string, string>
+        numeric_stats: Record<
+            string,
+            {
+                mean: number
+                median: number
+                std: number
+                min: number
+                max: number
+            }
+        >
+    }> {
+        const response = await this.client.get(`/statistics/${sessionId}`)
+        return response.data
+    }
+
+    // Data Cleaning Operations
+    async handleNulls(
+        sessionId: string,
+        strategy: 'drop' | 'fill_mean' | 'fill_median' | 'fill_mode' | 'fill_value',
+        columns?: string[],
+        fillValue?: any
+    ): Promise<{ session_id: string; message: string }> {
+        const response = await this.client.post(`/clean/nulls/${sessionId}`, {
+            strategy,
+            columns,
+            fill_value: fillValue,
+        })
+        return response.data
+    }
+
+    async handleDuplicates(
+        sessionId: string,
+        keep: 'first' | 'last' | 'none' = 'first'
+    ): Promise<{ session_id: string; message: string; removed_count: number }> {
+        const response = await this.client.post(`/clean/duplicates/${sessionId}`, {
+            keep,
+        })
+        return response.data
+    }
+
+    async convertDataType(
+        sessionId: string,
+        column: string,
+        targetType: 'int' | 'float' | 'str' | 'datetime'
+    ): Promise<{ session_id: string; message: string }> {
+        const response = await this.client.post(`/clean/convert/${sessionId}`, {
+            column,
+            target_type: targetType,
+        })
+        return response.data
+    }
+
+    async encodeColumn(
+        sessionId: string,
+        column: string,
+        method: 'label' | 'onehot' | 'ordinal'
+    ): Promise<{ session_id: string; message: string; new_columns?: string[] }> {
+        const response = await this.client.post(`/clean/encode/${sessionId}`, {
+            column,
+            method,
+        })
+        return response.data
+    }
+
+    async filterRows(
+        sessionId: string,
+        column: string,
+        operator: '>' | '<' | '>=' | '<=' | '==' | '!=' | 'contains',
+        value: string
+    ): Promise<void> {
+        await this.client.post(`/clean/filter/${sessionId}`, {
+            session_id: sessionId,
+            column,
+            operator,
+            value,
+        })
+    }
+
+    async manageColumns(
+        sessionId: string,
+        action: 'drop' | 'rename',
+        columns: string[],
+        newNames?: Record<string, string>
+    ): Promise<void> {
+        await this.client.post(`/clean/columns/${sessionId}`, {
+            session_id: sessionId,
+            action,
+            columns,
+            new_names: newNames,
+        })
+    }
+
+    // Download Cleaned Dataset
+    async downloadDataset(sessionId: string): Promise<Blob> {
+        const response = await this.client.get(`/download/${sessionId}`, {
+            responseType: 'blob',
+        })
+        return response.data
+    }
+
+    // ML Training Operations
+    async startTraining(sessionId: string, config: {
+        features: string[]
+        target: string
+        problemType: 'classification' | 'regression'
+        algorithms: string[]
+        trainTestSplit: number
+        scaling?: 'none' | 'standard' | 'minmax'
+    }): Promise<{
+        trainingId: string
+        session_id: string
+        problemType: string
+        models: Array<{
+            modelId: string
+            name: string
+            algorithm: string
+            metrics: Record<string, number | null>
+            confusionMatrix?: number[][]
+            featureImportance?: Record<string, number>
+            trainingTime: number
+            isBest: boolean
+        }>
+        bestModel: string
+        message: string
+    }> {
+        const response = await this.client.post(`/train/start/${sessionId}`, config)
+        return response.data
+    }>
+
+        async getTrainingResults(trainingId: string): Promise < {
+            trainingId: string
+        session_id: string
+        problemType: string
+        models: Array<{
+                modelId: string
+                name: string
+                algorithm: string
+                metrics: Record<string, number | null>
+                confusionMatrix?: number[][]
+                featureImportance?: Record<string, number>
+                trainingTime: number
+                isBest: boolean
+            }>
+        bestModel: string
+        message: string
+        } > {
+            const response = await this.client.get(`/train/results/${trainingId}`)
+        return response.data
+        }
+
+    async downloadModel(trainingId: string, modelId: string): Promise < Blob > {
+    const response = await this.client.get(
+        `/train/download-model/${trainingId}/${modelId}`,
+        { responseType: 'blob' }
+    )
+        return response.data
+}
+
+    async exportConfig(trainingId: string): Promise < Blob > {
+    const response = await this.client.get(`/train/export-config/${trainingId}`, {
+        responseType: 'blob',
+    })
+        return response.data
+}
+
+    async makePrediction(trainingId: string, modelId: string, data: Record<string, any>): Promise < {
+    prediction: number[]
+        probabilities?: number[][]
+} > {
+    const response = await this.client.post(
+        `/train/predict/${trainingId}/${modelId}`,
+        data
+    )
+        return response.data
+}
+
+    // Undo/Redo
+    async undo(sessionId: string): Promise < { message: string } > {
+    const response = await this.client.post(`/history/undo/${sessionId}`)
+        return response.data
+}
+
+    async redo(sessionId: string): Promise < { message: string } > {
+    const response = await this.client.post(`/history/redo/${sessionId}`)
+        return response.data
+}
+
+    async getHistory(sessionId: string): Promise < {
+    operations: Array<{
+        id: string
+        operation: string
+        timestamp: string
+        params: Record<string, any>
+    }>
+        current_index: number
+} > {
+    const response = await this.client.get(`/history/${sessionId}`)
+        return response.data
+}
+}
+
+export const apiClient = new APIClient()
+export default apiClient

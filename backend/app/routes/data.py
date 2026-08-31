@@ -5,6 +5,7 @@ from typing import List, Optional
 import pandas as pd
 import numpy as np
 import io
+import asyncio
 from app.schemas import (
     UploadResponse,
     PreviewResponse,
@@ -51,10 +52,14 @@ async def upload_file(file: UploadFile = File(...)):
         contents = await file.read()
         
         if filename.endswith('.csv'):
-            # Single CSV file
-            df = pd.read_csv(io.BytesIO(contents))
-            session_id = dataset_manager.create_session(df)
-            dataset_manager.filenames[session_id] = file.filename
+            # Run heavy pandas parsing + pickling in a thread pool to avoid blocking the event loop
+            def parse_and_save_csv():
+                df = pd.read_csv(io.BytesIO(contents), low_memory=False)
+                session_id = dataset_manager.create_session(df)
+                dataset_manager.filenames[session_id] = file.filename
+                return session_id, df
+
+            session_id, df = await asyncio.to_thread(parse_and_save_csv)
             
             return {
                 "session_id": session_id,
@@ -68,8 +73,11 @@ async def upload_file(file: UploadFile = File(...)):
             }
         else:
             # Excel file - check for multiple sheets
-            excel = pd.ExcelFile(io.BytesIO(contents))
-            sheet_names = excel.sheet_names
+            def parse_excel_sheets():
+                excel = pd.ExcelFile(io.BytesIO(contents))
+                return excel.sheet_names, contents
+
+            sheet_names, _ = await asyncio.to_thread(parse_excel_sheets)
             
             # Security: Prevent memory explosion from workbooks with massive sheet counts
             if len(sheet_names) > 10:
@@ -77,9 +85,13 @@ async def upload_file(file: UploadFile = File(...)):
             
             if len(sheet_names) == 1:
                 # Single sheet - treat like CSV
-                df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_names[0])
-                session_id = dataset_manager.create_session(df)
-                dataset_manager.filenames[session_id] = file.filename
+                def parse_single_sheet():
+                    df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_names[0])
+                    session_id = dataset_manager.create_session(df)
+                    dataset_manager.filenames[session_id] = file.filename
+                    return session_id, df
+
+                session_id, df = await asyncio.to_thread(parse_single_sheet)
                 
                 return {
                     "session_id": session_id,
@@ -93,12 +105,15 @@ async def upload_file(file: UploadFile = File(...)):
                 }
             else:
                 # Multiple sheets - create a group
-                sheets = {}
-                for name in sheet_names:
-                    sheets[name] = pd.read_excel(io.BytesIO(contents), sheet_name=name)
-                
-                group_id, sheet_sessions = dataset_manager.create_multi_sheet_session(sheets)
-                sheet_info = dataset_manager.get_sheet_info(group_id)
+                def parse_multi_sheet():
+                    sheets = {}
+                    for name in sheet_names:
+                        sheets[name] = pd.read_excel(io.BytesIO(contents), sheet_name=name)
+                    group_id, sheet_sessions = dataset_manager.create_multi_sheet_session(sheets)
+                    sheet_info = dataset_manager.get_sheet_info(group_id)
+                    return group_id, sheet_info
+
+                group_id, sheet_info = await asyncio.to_thread(parse_multi_sheet)
                 
                 # Return the first sheet as default active
                 first_sheet = sheet_info[0]
@@ -114,6 +129,8 @@ async def upload_file(file: UploadFile = File(...)):
                     "group_id": group_id,
                     "sheets": sheet_info
                 }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 

@@ -41,7 +41,7 @@ class APIClient {
     }
 
     // File Upload
-    async uploadFile(file: File, sessionId?: string): Promise<{
+    async uploadFile(file: File, sessionId?: string, onUploadProgress?: (percent: number) => void): Promise<{
         session_id: string
         filename: string
         rows: number
@@ -69,6 +69,12 @@ class APIClient {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
+            onUploadProgress: onUploadProgress ? (progressEvent) => {
+                if (progressEvent.total) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                    onUploadProgress(percent)
+                }
+            } : undefined,
         })
         return response.data
     }

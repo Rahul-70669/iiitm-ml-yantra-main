@@ -1037,6 +1037,8 @@ export default function Clean() {
     const [totalRows, setTotalRows] = useState(0)
     const [stats, setStats] = useState<any>(null)
     const [loading, setLoading] = useState(false)
+    const [uploadPercent, setUploadPercent] = useState(0)
+    const [uploadFileName, setUploadFileName] = useState('')
     const [rowCount, setRowCount] = useState(15)
     const [activeOp, setActiveOp] = useState<string | null>('preview')
     const [viewLabel, setViewLabel] = useState('Data Preview')
@@ -1171,31 +1173,31 @@ export default function Clean() {
     const loadSessionData = async (sid: string, op?: string | null) => {
         const currentOp = op ?? activeOp
         try {
-            const statsResponse = await apiClient.getStatistics(sid)
-            setStats(statsResponse)
-
-            let data: any[] = []
-            let total = 0
+            // Fire statistics + appropriate preview in parallel for speed
+            const statsPromise = apiClient.getStatistics(sid)
+            let previewPromise: Promise<{ data: any[]; total_rows: number }>
 
             if (currentOp === 'nulls') {
-                const res = await apiClient.getNullsPreview(sid)
-                data = res.data
-                total = res.total_rows
-                setViewLabel('Null Values')
+                previewPromise = apiClient.getNullsPreview(sid)
             } else if (currentOp === 'duplicates') {
-                const res = await apiClient.getDuplicatesPreview(sid)
-                data = res.data
-                total = res.total_rows
-                setViewLabel('Duplicate Rows')
+                previewPromise = apiClient.getDuplicatesPreview(sid)
             } else {
-                const res = await apiClient.getPreview(sid, rowCount)
-                data = res.data
-                total = res.total_rows
-                setViewLabel('Data Preview')
+                previewPromise = apiClient.getPreview(sid, rowCount)
             }
 
-            setPreviewData(data)
-            setTotalRows(total)
+            const [statsResponse, previewResponse] = await Promise.all([statsPromise, previewPromise])
+
+            setStats(statsResponse)
+            setPreviewData(previewResponse.data)
+            setTotalRows(previewResponse.total_rows)
+
+            if (currentOp === 'nulls') {
+                setViewLabel('Null Values')
+            } else if (currentOp === 'duplicates') {
+                setViewLabel('Duplicate Rows')
+            } else {
+                setViewLabel('Data Preview')
+            }
         } catch (error) {
             console.error('Error loading session data:', error)
         }
@@ -1376,8 +1378,12 @@ export default function Clean() {
             return
         }
         setLoading(true)
+        setUploadPercent(0)
+        setUploadFileName(file.name)
         try {
-            const uploadResponse = await apiClient.uploadFile(file)
+            const uploadResponse = await apiClient.uploadFile(file, undefined, (percent) => {
+                setUploadPercent(percent)
+            })
             setSessionId(uploadResponse.session_id)
             localStorage.setItem('ml_yantra_session_id', uploadResponse.session_id)
 
@@ -1400,6 +1406,8 @@ export default function Clean() {
             toast.error(error instanceof Error ? error.message : 'Failed to upload file')
         } finally {
             setLoading(false)
+            setUploadPercent(0)
+            setUploadFileName('')
         }
     }
 
@@ -2755,14 +2763,45 @@ export default function Clean() {
                 </div>
             )}
 
-            {/* Loading Overlay */}
+            {/* Upload / Processing Overlay */}
             {loading && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-2xl flex items-center gap-4 border border-slate-200 dark:border-slate-800">
-                        <div className="size-8 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
-                        <div>
-                            <h3 className="font-bold text-lg">Processing file...</h3>
-                            <p className="text-slate-500 text-sm">Uploading and analyzing your dataset</p>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-2xl flex flex-col gap-5 border border-slate-200 dark:border-slate-800 w-full max-w-sm mx-4">
+                        <div className="flex items-center gap-4">
+                            <div className="size-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-primary text-2xl">cloud_upload</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-bold text-lg leading-tight">
+                                    {uploadPercent < 100 ? 'Uploading file…' : 'Processing dataset…'}
+                                </h3>
+                                {uploadFileName && (
+                                    <p className="text-slate-400 text-xs mt-0.5 truncate" title={uploadFileName}>{uploadFileName}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="space-y-2">
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-primary to-orange-400 rounded-full transition-all duration-300"
+                                    style={{ width: uploadPercent < 100 ? `${uploadPercent}%` : '100%' }}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                                <span>
+                                    {uploadPercent < 100
+                                        ? `${uploadPercent}% uploaded`
+                                        : 'Parsing & indexing…'}
+                                </span>
+                                {uploadPercent < 100 && (
+                                    <span className="font-mono">{uploadPercent}%</span>
+                                )}
+                                {uploadPercent >= 100 && (
+                                    <div className="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
